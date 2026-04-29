@@ -21,6 +21,55 @@ err() {
 	echo "Error: $*" >&2
 }
 
+# Make path absolute relative to $PWD if it isn't already
+to_abs() {
+	case $1 in
+		/*) printf '%s\n' "$1" ;;
+		*)  printf '%s\n' "$PWD/$1" ;;
+	esac
+}
+
+# Collapse . and .. segments (string-based; works on non-existent paths)
+normalize() {
+	local path=$1 seg
+	local -a parts=()
+	local IFS=/
+	for seg in $path; do
+		case $seg in
+			''|.) ;;
+			..) [[ ${#parts[@]} -gt 0 ]] && unset "parts[$((${#parts[@]}-1))]" ;;
+			*)  parts+=("$seg") ;;
+		esac
+	done
+	if [[ ${#parts[@]} -eq 0 ]]; then
+		printf '/\n'
+	else
+		printf '/%s' "${parts[@]}"
+		printf '\n'
+	fi
+}
+
+# Pure-bash relative path: relpath <target> <base>
+relpath() {
+	local target base
+	target=$(normalize "$(to_abs "$1")")
+	base=$(normalize "$(to_abs "$2")")
+
+	local common=$base result=
+	while [[ "${target#"$common"/}" == "$target" && "$target" != "$common" ]]; do
+		common=$(dirname "$common")
+		result="../$result"
+	done
+
+	if [[ "$target" == "$common" ]]; then
+		result=${result%/}
+	else
+		result="${result}${target#"$common"/}"
+	fi
+
+	printf '%s\n' "${result:-.}"
+}
+
 self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 force=false
 
@@ -53,7 +102,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Collect candidate JSON files co-located with this script.
-mapfile -t json_files < <(find "$self_dir" -maxdepth 1 -type f -name '*.json' -printf '%f\n' | sort)
+json_files=()
+while IFS= read -r f; do json_files+=("$f"); done < <(find "$self_dir" -maxdepth 1 -type f -name '*.json' -exec basename {} \; | sort)
 
 if [[ ${#json_files[@]} -eq 0 ]]; then
 	err "No JSON files found next to this script."
@@ -113,7 +163,7 @@ fi
 
 devcontainer_dir="$repo_root/.devcontainer"
 target_link="$devcontainer_dir/devcontainer.json"
-relative_source_file="$(realpath --relative-to="$devcontainer_dir" "$source_file")"
+relative_source_file="$(relpath "$source_file" "$devcontainer_dir")"
 
 mkdir -p "$devcontainer_dir"
 
