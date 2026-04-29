@@ -1,17 +1,7 @@
-# devcontainers-template
+# suede-tapestry
 
-This repository is intended to be used as a [GitHub template](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template) for projects that rely on [Dev Containers](https://containers.dev/).
+TODO: This repo will be used to display all currently available suede dependencies.
 
-It includes the [devcontainers-suede](https://github.com/pmalacho-mit/devcontainers-suede) utility pre-installed so new repositories can quickly adopt a consistent, ready-to-use devcontainer setup.
+It will pull the README for each one and display it in a nice format.
 
-By default, the [`devcontainers-suede/common.json`](./devcontainers-suede/common.json) devcontainer configuration is used.
-
-If you want to refresh or change that configuration, run:
-
-```bash
-./devcontainers-suede/install.sh --force
-```
-
-## Upgrading
-
-To get the latest devcontainer configurations from [devcontainers-suede](https://github.com/pmalacho-mit/devcontainers-suede), simply run `git subrepo pull devcontainers-suede` (assuming you have [git subrepo](https://github.com/ingydotnet/git-subrepo) installed, which will be if you use any of the provided devcontainer configs). 
+It will also have a 'map' view where it shows how some dependencies depend on others, and how they fit together.
