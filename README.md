@@ -4,4 +4,4 @@ TODO: This repo will be used to display all currently available suede dependenci
 
 It will pull the README for each one and display it in a nice format.
 
-It will also have a 'map' view where it shows how some dependencies depend on others, and how they fit together.
+It will also have a 'map' view where it shows how some dependencies depend on others, and how they fit together. Should also show which suede repos 'vendor' subrepo dependencies (like sweater-vest does for easier install)
