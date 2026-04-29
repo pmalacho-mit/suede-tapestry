@@ -1,0 +1,1 @@
+class t extends AudioProcessor{onInit(){console.log("init bypass processor")}onUninit(){console.log("uninit bypass processor")}process(n,r){const o=n[0],e=r[0];if(o.length>0)for(let s=0;s<e.length;++s)e[s].set(o[s]);return!0}}registerProcessor("bypass-audio-processor",t);

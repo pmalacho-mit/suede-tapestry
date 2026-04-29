@@ -1,0 +1,12 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/ingydotnet/git-subrepo#readme
+;
+[subrepo]
+	remote = https://github.com/pmalacho-mit/testyjs-suede
+	branch = release
+	commit = b11419e48fe0865123bccc4a5ce97d5a73fe63ea
+	parent = 06ecc025cf67912c130afef23b4e83ddf5cdcb9a
+	method = merge
+	cmdver = 0.4.9

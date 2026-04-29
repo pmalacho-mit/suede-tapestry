@@ -1,0 +1,12 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/ingydotnet/git-subrepo#readme
+;
+[subrepo]
+	remote = https://github.com/pmalacho-mit/svelte-url-parameterizer-suede
+	branch = release
+	commit = 1feb23ed66536e92f283fdc27d0f169851381956
+	parent = 06ecc025cf67912c130afef23b4e83ddf5cdcb9a
+	method = merge
+	cmdver = 0.4.9

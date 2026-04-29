@@ -1,0 +1,12 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/ingydotnet/git-subrepo#readme
+;
+[subrepo]
+	remote = https://github.com/pmalacho-mit/serialized-renderer-suede
+	branch = release
+	commit = 726db364b8ba7d342f3459a274517333d758ea2a
+	parent = 06ecc025cf67912c130afef23b4e83ddf5cdcb9a
+	method = merge
+	cmdver = 0.4.9

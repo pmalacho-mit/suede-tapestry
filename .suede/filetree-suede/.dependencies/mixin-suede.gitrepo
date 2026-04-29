@@ -1,0 +1,12 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/ingydotnet/git-subrepo#readme
+;
+[subrepo]
+	remote = https://github.com/pmalacho-mit/mixin-suede
+	branch = release
+	commit = 7ea301766ee3cab877dc6fabd702fb00f36487ed
+	parent = 78e2df9a2108d7e1024bfaa4c1b32c3dda172939
+	method = merge
+	cmdver = 0.4.9

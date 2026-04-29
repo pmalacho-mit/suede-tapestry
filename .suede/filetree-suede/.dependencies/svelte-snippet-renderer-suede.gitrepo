@@ -1,0 +1,12 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/ingydotnet/git-subrepo#readme
+;
+[subrepo]
+remote = https://github.com/pmalacho-mit/svelte-snippet-renderer-suede
+branch = release
+	commit = a4818eb6c61aaa9b26e6ce7904b35ba0e867a018
+	parent = 8b060530344849e987a9e7d6ae94e3dcfdba0544
+	method = merge
+	cmdver = 0.4.9

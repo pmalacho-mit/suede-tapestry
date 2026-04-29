@@ -1,0 +1,1 @@
+class u extends AudioProcessor{constructor(e,o){super(e,o),e.onmessage=({data:{cmd:t,data:s}})=>{t==="update"&&e.postMessage({cmd:"received update message",data:s})}}process(e,o){return o[0].forEach(s=>{for(let r=0;r<s.length;r++)s[r]=Math.random()*2-1}),!0}}registerProcessor("white-noise-audio-processor",u);

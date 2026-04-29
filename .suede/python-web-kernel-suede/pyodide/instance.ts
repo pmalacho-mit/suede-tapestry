@@ -1,0 +1,271 @@
+import type { Kernel } from "../worker/kernel-worker";
+import { EMFS } from "../worker/emscripten-fs";
+import {
+  patchMatplotlib,
+  unloadLocalModules,
+  asImage,
+  tryResolveProblematicDependencies,
+  loadMsgFilterAndCollectPackages,
+  tryLoadImportsOfLocallyImportedModules,
+  addToSysPath,
+} from "./modules";
+import { loadPyodide, version, type PyodideAPI } from "pyodide";
+import { make, type Output } from "../output";
+import { dirname } from "../utils";
+
+const Char = {
+  NewLine: 10,
+} as const;
+
+const io = (
+  manager: Kernel,
+): {
+  [k in "stdin" | "stdout" | "stderr"]: Parameters<
+    PyodideAPI[`set${Capitalize<k>}`]
+  >[0];
+} => {
+  let acc = "";
+
+  const encoder = new TextEncoder();
+  let input = new Uint8Array();
+  let inputIndex = -1; // -1 means that we just returned null
+  const stdin = () => {
+    if (inputIndex === -1) {
+      const text = manager.input(acc);
+      input = encoder.encode(text + (text.endsWith("\n") ? "" : "\n"));
+      inputIndex = 0;
+    }
+
+    if (inputIndex < input.length) {
+      let character = input[inputIndex];
+      inputIndex++;
+      return character;
+    } else {
+      inputIndex = -1;
+      return null;
+    }
+  };
+
+  const raw = (charCode: number) => {
+    if (charCode === Char.NewLine) {
+      manager.output(make("stream", "out", acc));
+      acc = "";
+    } else acc += String.fromCharCode(charCode);
+  };
+
+  const batched = (output: string) =>
+    manager.output(make("stream", "err", output));
+
+  return { stdin: { stdin }, stdout: { raw }, stderr: { batched } };
+};
+
+export class PyodideInstance {
+  readonly globalThisId: string;
+  readonly interruptBuffer: Uint8Array<ArrayBufferLike>;
+
+  proxiedGlobalThis: undefined | any;
+
+  pyodide?: PyodideAPI;
+  root?: string;
+
+  constructor(options: {
+    globalThisId: string;
+    interruptBuffer: Uint8Array<ArrayBufferLike>;
+  }) {
+    this.globalThisId = options.globalThisId;
+    this.interruptBuffer = options.interruptBuffer;
+  }
+
+  async init(manager: Kernel, root: string): Promise<any> {
+    this.root = root;
+    this.proxiedGlobalThis = this.proxyGlobalThis(manager, this.globalThisId);
+
+    const indexURL = `https://cdn.jsdelivr.net/pyodide/v${version}/full/`;
+
+    this.pyodide = await loadPyodide({
+      indexURL,
+      fullStdLib: false,
+    });
+
+    const { stdin, stdout, stderr } = io(manager);
+
+    this.pyodide.setStdin(stdin);
+    this.pyodide.setStdout(stdout);
+    this.pyodide.setStderr(stderr);
+
+    await patchMatplotlib(this.pyodide, (payload) =>
+      manager.output(make("display_data", "image", payload)),
+    );
+
+    this.pyodide.setInterruptBuffer(this.interruptBuffer);
+
+    try {
+      this.pyodide.FS.mkdirTree(root);
+    } catch (e) {
+      console.error("Error creating mount directory in FS", e, root);
+    }
+
+    this.pyodide.FS.mount(new EMFS(this.pyodide, manager.syncFs), {}, root);
+    this.pyodide.registerJsModule("js", this.proxiedGlobalThis);
+  }
+
+  async unloadLocalModules() {
+    console.log(
+      "Unloaded modules:",
+      await unloadLocalModules(this.pyodide!, this.root!),
+    );
+  }
+
+  async addAncestryToSysPath(path: string, recursive = true) {
+    let dir = dirname(path);
+    while (dir !== this.root) {
+      await addToSysPath(this.pyodide!, dir);
+      if (!recursive) return;
+      dir = dirname(dir);
+    }
+    await addToSysPath(this.pyodide!, this.root!);
+  }
+
+  async load(code: string, filename: string): Promise<void> {
+    if (!this.pyodide)
+      return console.warn("Worker has not yet been initialized");
+
+    this.pyodide.setInterruptBuffer(undefined as any); // Disable interrupts while loading packages
+
+    const { loadedPackages, messageCallback } =
+      loadMsgFilterAndCollectPackages();
+    await this.pyodide.loadPackagesFromImports(code, { messageCallback });
+    await tryResolveProblematicDependencies(this.pyodide, loadedPackages);
+    const { discoveredDirs } = await tryLoadImportsOfLocallyImportedModules(
+      this.pyodide,
+      code,
+      filename,
+    );
+    for (const dir of discoveredDirs)
+      await this.addAncestryToSysPath(dir, false);
+    await this.addAncestryToSysPath(filename, false);
+  }
+
+  async run(
+    code: string,
+    filename: string,
+  ): Promise<Output.Specific | undefined | void> {
+    if (!this.pyodide)
+      return console.warn("Worker has not yet been initialized");
+
+    await this.addAncestryToSysPath(filename);
+
+    let result = await this.pyodide
+      .runPythonAsync(code, { filename })
+      .catch((error) => error);
+
+    if (result === undefined || result === null) return;
+    else if (result instanceof this.pyodide.ffi.PyProxy) {
+      if (result._repr_html_ !== undefined) {
+        const html = result._repr_html_();
+        this.destroyToJsResult(result);
+        return make("execute_result", "html", html);
+      } else if (result._repr_latex_ !== undefined) {
+        const latex = result._repr_latex_();
+        this.destroyToJsResult(result);
+        return make("execute_result", "latex", latex);
+      } else {
+        const image = asImage(result);
+        if (image) return make("display_data", "image", image);
+        else {
+          const str = result.__str__();
+          this.destroyToJsResult(result);
+          return make("execute_result", "plain", str);
+        }
+      }
+    } else if (result instanceof this.pyodide.ffi.PythonError) {
+      const { message, type } = result;
+      const ename = type;
+      const evalue = message.split(`${type}: `)[1]?.trim() ?? "";
+      const lines = message.split("\n");
+      const firstFileLine = lines.findIndex((line) => line.includes(filename))!;
+      const traceback = lines.slice(firstFileLine);
+      traceback.splice(0, 0, lines[0]); // Add the error type/message at the start
+      return make("error", { ename, evalue, traceback });
+    } else return make("execute_result", "plain", String(result));
+  }
+
+  private proxyGlobalThis(manager: Kernel, id?: string) {
+    // Special cases for the globalThis object. We don't need to proxy everything
+    const noProxy = new Set<string | symbol>([
+      "location",
+      // Proxy navigator, however, some navigator properties do not have to be proxied
+      // "navigator",
+      "self",
+      "importScripts",
+      "addEventListener",
+      "removeEventListener",
+      "caches",
+      "crypto",
+      "indexedDB",
+      "isSecureContext",
+      "origin",
+      "performance",
+      "atob",
+      "btoa",
+      "clearInterval",
+      "clearTimeout",
+      "createImageBitmap",
+      "fetch",
+      "queueMicrotask",
+      "setInterval",
+      "setTimeout",
+
+      // networking
+      "URL",
+      "URLSearchParams",
+      "Headers",
+      "Request",
+      "Response",
+      "AbortController",
+      "AbortSignal",
+      "TextEncoder",
+      "TextDecoder",
+
+      // builtins
+      "Object",
+      "Array",
+      "JSON",
+
+      // Special cases for the pyodide globalThis
+      "$$",
+      "pyodide",
+      "__name__",
+      "__package__",
+      "__path__",
+      "__loader__",
+
+      // Pyodide likes checking for lots of properties, like the .stack property to check if something is an error
+      // https://github.com/pyodide/pyodide/blob/c8436c33a7fbee13e1ded97c0bbdaa7d635f2745/src/core/jsproxy.c#L1631
+      "stack",
+      "get",
+      "set",
+      "has",
+      "size",
+      "length",
+      "then",
+      "includes",
+      "next",
+      Symbol.iterator,
+    ]);
+
+    return manager.proxy && id
+      ? manager.proxy.wrapExcluderProxy(
+          manager.proxy.getObjectProxy(id),
+          globalThis,
+          noProxy,
+        )
+      : globalThis;
+  }
+
+  private destroyToJsResult<T>(x: T): T {
+    if (!this.pyodide || !x) return x;
+    if (x instanceof this.pyodide.ffi.PyProxy) x.destroy();
+    return x;
+  }
+}
